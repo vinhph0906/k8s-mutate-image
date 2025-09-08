@@ -45,7 +45,7 @@ In the `deployment.yaml` file generated via the provided command (details below)
 few environment variables drive the configuration:
 
 | Environment variable         | Default  | Description                                                                                                                                                                                                     |
-|------------------------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ---------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `REGISTRY`                   |          | If set, tells which registry to force, such as `docker.sqooba.io`                                                                                                                                               |
 | `IMAGE_PULL_SECRET`          |          | If set, tells which `imagePullSecrets` to inject in the Pod. Note the secret must be present in the namespace, and this task is out of this webhook responsibility.                                             |
 | `IMAGE_PULL_SECRET_APPEND`   | `false`  | Tells whether the `IMAGE_PULL_SECRET` is appen'ed to an existing list of `imagePullSecrets` (if it does not exist already) or if any `imagePullSecrets` are replaced by `IMAGE_PULL_SECRET` (default behavior). |

@@ -35,9 +35,11 @@ kubectl create secret generic k8s-mutate-image-and-policy-webhook-tls-certs -n $
     --from-file=./ca.crt \
     --from-file=./webhook-server-tls.key \
     --from-file=./webhook-server-tls.crt \
-    --dry-run -o yaml > ../generated/certs-configmap.yaml
+    --dry-run=client -o yaml > ../generated/certs-configmap.yaml
 # --dry-run is deprecated, uses --dry-run=client
-
+kubectl create secret generic k8s-mutate-image-and-policy-webhook-config -n ${NAMESPACE} \
+    --from-file=../../config.yaml \
+    --dry-run=client -o yaml > ../generated/config-configmap.yaml
 popd
 
 export CA_PEM_B64=$(cat certs/ca.crt | base64 -w0)

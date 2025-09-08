@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.20 as builder
+FROM --platform=$BUILDPLATFORM golang:1.24.7 as builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -13,11 +13,11 @@ RUN env GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 go mod download && \
   export GIT_COMMIT=$(git rev-parse HEAD) && \
   export GIT_DIRTY=$(test -n "`git status --porcelain`" && echo "+CHANGES" || true) && \
   env GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
-    go build -o k8s-mutate-image-and-policy-webhook \
-    -ldflags "-X github.com/sqooba/go-common/version.GitCommit=${GIT_COMMIT}${GIT_DIRTY} \
-              -X github.com/sqooba/go-common/version.BuildDate=${BUILD_DATE} \
-              -X github.com/sqooba/go-common/version.Version=${VERSION}" \
-    .
+  go build -o k8s-mutate-image-and-policy-webhook \
+  -ldflags "-X main.GitCommit=${GIT_COMMIT}${GIT_DIRTY} \
+  -X main.BuildDate=${BUILD_DATE} \
+  -X main.Version=${VERSION}" \
+  .
 
 FROM --platform=$BUILDPLATFORM gcr.io/distroless/base
 

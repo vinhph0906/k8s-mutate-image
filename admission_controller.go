@@ -46,16 +46,6 @@ type patchOperation struct {
 // operations to be applied in case of success, or the error that will be shown when the operation is rejected.
 type admitFunc func(*admissionv1.AdmissionRequest) ([]patchOperation, error)
 
-// isExcludedNamespace checks if the given namespace is a excluded via the configuration.
-func isExcludedNamespace(ns string, excludedNamespaces []string) bool {
-	for _, a := range excludedNamespaces {
-		if a == ns {
-			return true
-		}
-	}
-	return false
-}
-
 // doServeAdmitFunc parses the HTTP request for an admission controller webhook, and -- in case of a well-formed
 // request -- delegates the admission control logic to the given admitFunc. The response body is then returned as raw
 // bytes.
@@ -80,7 +70,7 @@ func (wh *mutationWH) doServeAdmitFunc(w http.ResponseWriter, r *http.Request, a
 
 	// Step 2: Parse the AdmissionReview request.
 	var admissionReviewReq admissionv1.AdmissionReview
-	log.Tracef("About to deserialize the request, request = %s", string(body))
+	wh.logger.Tracef("About to deserialize the request, request = %s", string(body))
 
 	// Step 3: Construct the AdmissionReview response.
 	admissionReviewResponse := admissionv1.AdmissionReview{
@@ -88,7 +78,7 @@ func (wh *mutationWH) doServeAdmitFunc(w http.ResponseWriter, r *http.Request, a
 	}
 
 	if _, _, err := universalDeserializer.Decode(body, nil, &admissionReviewReq); err != nil {
-		log.Printf("Got an error while deserializing the request, %v, request = %s", err, string(body))
+		wh.logger.WithField("error", err).WithField("request", string(body)).Error("Got an error while deserializing the request")
 		admissionReviewResponse.Response.Allowed = false
 		admissionReviewResponse.Response.Result = &metav1.Status{
 			Message: fmt.Sprintf("Got an error while deserializing the request: %s", err.Error()),
@@ -97,7 +87,7 @@ func (wh *mutationWH) doServeAdmitFunc(w http.ResponseWriter, r *http.Request, a
 		//return nil, fmt.Errorf("k8s-mutate-image-and-policy-webhook: could not deserialize request: %v", err)
 	} else if admissionReviewReq.Request == nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Deserializing the request produced a empty review, request = %s", string(body))
+		wh.logger.WithField("request", string(body)).Error("Deserializing the request produced a empty review")
 		admissionReviewResponse.Response.Allowed = false
 		admissionReviewResponse.Response.Result = &metav1.Status{
 			Message: "Deserializing the request produced a empty review",
@@ -111,10 +101,10 @@ func (wh *mutationWH) doServeAdmitFunc(w http.ResponseWriter, r *http.Request, a
 
 		// Apply the admit() function only for non-excluded namespaces. For objects excluded, return
 		// an empty set of patch operations.
-		if !isExcludedNamespace(admissionReviewReq.Request.Namespace, wh.excludedNamespaces) {
+		if !wh.excludedNamespaces[admissionReviewReq.Request.Namespace] {
 			patchOps, err = admit(admissionReviewReq.Request)
 		} else {
-			log.Debugf("Namespace is excluded")
+			wh.logger.Debugf("Namespace is excluded")
 		}
 
 		if err != nil {
@@ -129,7 +119,7 @@ func (wh *mutationWH) doServeAdmitFunc(w http.ResponseWriter, r *http.Request, a
 			// Otherwise, encode the patch operations to JSON and return a positive response.
 			patchBytes, err := simplejson.Marshal(patchOps)
 			if err != nil {
-				log.Printf("Got an error while serializing the patches, %v", err)
+				wh.logger.WithField("error", err).Error("Got an error while serializing the patches")
 				admissionReviewResponse.Response.Allowed = false
 				admissionReviewResponse.Response.Result = &metav1.Status{
 					Message: err.Error(),
@@ -149,11 +139,11 @@ func (wh *mutationWH) doServeAdmitFunc(w http.ResponseWriter, r *http.Request, a
 
 // serveAdmitFunc is a wrapper around doServeAdmitFunc that adds error handling and logging.
 func (wh *mutationWH) serveAdmitFunc(w http.ResponseWriter, r *http.Request, admit admitFunc) {
-	log.Tracef("Webhook request starts...")
+	wh.logger.Tracef("Webhook request starts...")
 
 	var writeErr error
 	if object, err := wh.doServeAdmitFunc(w, r, admit); err != nil {
-		log.Printf("Error handling webhook request: %v", err)
+		wh.logger.WithField("error", err).Error("Error handling webhook request")
 		w.WriteHeader(http.StatusInternalServerError)
 		_, writeErr = w.Write([]byte(err.Error()))
 	} else {
@@ -161,15 +151,15 @@ func (wh *mutationWH) serveAdmitFunc(w http.ResponseWriter, r *http.Request, adm
 		buf := new(bytes.Buffer)
 		writeErr = encoder.Encode(object, buf)
 		if writeErr == nil {
-			log.Tracef("Serialized response: %s", buf.String())
+			wh.logger.Tracef("Serialized response: %s", buf.String())
 			_, writeErr = w.Write(buf.Bytes())
 		}
 	}
 
 	if writeErr != nil {
-		log.Printf("Could not write response: %v", writeErr)
+		wh.logger.WithField("error", writeErr).Error("Could not write response")
 	}
-	log.Tracef("...Webhook request ends")
+	wh.logger.Tracef("...Webhook request ends")
 }
 
 // admitFuncHandler takes an admitFunc and wraps it into a http.Handler by means of calling serveAdmitFunc.

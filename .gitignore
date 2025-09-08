@@ -1,2 +1,4 @@
 vendor/
-k8s-mutate-image-and-policy-webhook
+k8s-mutate-image-and-policy
+deployment/generated-*
+deployment/certs

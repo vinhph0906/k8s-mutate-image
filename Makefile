@@ -1,4 +1,4 @@
-VERSION=v3.4.0
+VERSION=v3.4.1
 GOOS=linux
 GOCMD=go
 GOBUILD=$(GOCMD) build
@@ -10,8 +10,8 @@ PACKAGE_PLATFORM=$(BUILD_PLATFORM),linux/arm64,linux/arm/v7
 VERSION_MAJOR=$(shell echo $(VERSION) | cut -f1 -d.)
 VERSION_MINOR=$(shell echo $(VERSION) | cut -f2 -d.)
 BINARY_NAME=k8s-mutate-image-and-policy-webhook
-GO_PACKAGE=sqooba/k8s-mutate-image-and-policy-webhook
-DOCKER_REGISTRY=
+GO_PACKAGE=k8s-mutate-image-and-policy-webhook
+DOCKER_REGISTRY=vinhph2/
 GIT_COMMIT=$(shell git rev-parse HEAD)
 GIT_DIRTY=$(shell test -n "`git status --porcelain`" && echo "+CHANGES" || true)
 BUILD_DATE=$(shell date '+%Y-%m-%d-%H:%M:%S')
@@ -35,13 +35,11 @@ build:
 		-o ${BINARY_NAME} .
 
 package:
-	docker buildx build -f Dockerfile \
+	podman buildx build -f Dockerfile \
 		--platform $(BUILD_PLATFORM) \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		-t ${DOCKER_REGISTRY}${GO_PACKAGE}:$(VERSION) \
-		-t ${DOCKER_REGISTRY}${GO_PACKAGE}:$(VERSION_MAJOR).$(VERSION_MINOR) \
-		-t ${DOCKER_REGISTRY}${GO_PACKAGE}:$(VERSION_MAJOR) \
 		--load --no-cache \
 		.
 

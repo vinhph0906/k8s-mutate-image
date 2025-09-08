@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -19,8 +18,8 @@ func (wh *mutationWH) applyMutations(req *admissionv1.AdmissionRequest) ([]patch
 	// This handler should only get called on Pod or Pvc objects as per the MutatingWebhookConfiguration in the YAML file.
 	// However, if (for whatever reason) this gets invoked on an object of a different kind, issue a log message but
 	// let the object request pass through otherwise.
-	if req.Resource == podResource {
-
+	switch req.Resource {
+	case podResource:
 		// Parse the Pod object.
 		raw := req.Object.Raw
 		pod := corev1.Pod{}
@@ -30,8 +29,7 @@ func (wh *mutationWH) applyMutations(req *admissionv1.AdmissionRequest) ([]patch
 
 		return wh.applyMutationOnPod(pod)
 
-	} else if req.Resource == volumeClaimResource {
-
+	case volumeClaimResource:
 		// Parse the Pvc object.
 		raw := req.Object.Raw
 		pvc := corev1.PersistentVolumeClaim{}
@@ -40,9 +38,9 @@ func (wh *mutationWH) applyMutations(req *admissionv1.AdmissionRequest) ([]patch
 		}
 
 		return wh.applyMutationOnPvc(pvc)
+	default:
+		wh.logger.WithField("resource", req.Resource).Warn("Got an unexpected resource, don't know what to do with...")
 	}
-
-	log.Printf("Got an unexpected resource %s, don't know what to do with...", req.Resource)
 	return nil, nil
 }
 
@@ -52,138 +50,21 @@ func (wh *mutationWH) applyMutationOnPod(pod corev1.Pod) ([]patchOperation, erro
 
 	var patches []patchOperation
 
-	if wh.registry != "" {
-		if pod.Spec.InitContainers != nil {
-			for i, c := range pod.Spec.InitContainers {
-				log.Tracef("/spec/initContainers/%d/image = %s", i, c.Image)
-
-				if !containsAnyRegistry(c.Image, append(wh.ignoredRegistries, wh.registry)) {
-					patches = append(patches, patchOperation{
-						Op:    "replace",
-						Path:  fmt.Sprintf("/spec/initContainers/%d/image", i),
-						Value: replaceRegistryIfSet(c.Image, wh.registry),
-					})
-				}
-			}
-		}
-
-		if pod.Spec.Containers != nil {
-			for i, c := range pod.Spec.Containers {
-				log.Tracef("/spec/containers/%d/image = %s", i, c.Image)
-
-				if !containsAnyRegistry(c.Image, append(wh.ignoredRegistries, wh.registry)) {
-					patches = append(patches, patchOperation{
-						Op:    "replace",
-						Path:  fmt.Sprintf("/spec/containers/%d/image", i),
-						Value: replaceRegistryIfSet(c.Image, wh.registry),
-					})
-				}
-			}
-		}
+	if wh.registries != nil {
+		patches = append(patches, wh.patchRegistry(pod)...)
 	}
 
 	if wh.forceImagePullPolicy {
-		if pod.Spec.InitContainers != nil {
-			for i, c := range pod.Spec.InitContainers {
-				log.Tracef("/spec/initContainers/%d/imagePullPolicy = %s", i, c.ImagePullPolicy)
-				op := "replace"
-				// still take the case when ImagePullPolicy is empty, but this case should not happen.
-				// Policy defaults to Always if tag is latest, IfNotPresent otherwise.
-				if c.ImagePullPolicy == "" {
-					op = "add"
-				}
-				if wh.imagePullPolicyToForce != c.ImagePullPolicy {
-					patches = append(patches, patchOperation{
-						Op:    op,
-						Path:  fmt.Sprintf("/spec/initContainers/%d/imagePullPolicy", i),
-						Value: wh.imagePullPolicyToForce,
-					})
-				}
-			}
-		}
-
-		if pod.Spec.Containers != nil {
-			for i, c := range pod.Spec.Containers {
-				log.Tracef("/spec/containers/%d/imagePullPolicy = %s", i, c.ImagePullPolicy)
-				if c.ImagePullPolicy != wh.imagePullPolicyToForce {
-					op := "replace"
-					if c.ImagePullPolicy == "" {
-						op = "add"
-					}
-					patches = append(patches, patchOperation{
-						Op:    op,
-						Path:  fmt.Sprintf("/spec/containers/%d/imagePullPolicy", i),
-						Value: wh.imagePullPolicyToForce,
-					})
-				}
-			}
-		}
+		patches = append(patches, wh.patchImagePullPolicy(pod)...)
 	}
 
 	if wh.imagePullSecret != "" {
-		// if there are no existing pull secrets, append or replace is the same operation.
-		if pod.Spec.ImagePullSecrets == nil {
-			patches = append(patches, patchOperation{
-				Op:    "add",
-				Path:  "/spec/imagePullSecrets",
-				Value: []map[string]string{{"name": wh.imagePullSecret}},
-			})
-		} else {
-			if wh.appendImagePullSecret {
-				// in the append branch,
-				// in case of existing secrets in the pod, we check if the secret does not exist and we append it to the list
-				imagePullSecretsAlreadyExist := false
-				for _, i := range pod.Spec.ImagePullSecrets {
-					if i.Name == wh.imagePullSecret {
-						imagePullSecretsAlreadyExist = true
-						break
-					}
-				}
-				if !imagePullSecretsAlreadyExist {
-					patches = append(patches, patchOperation{
-						Op:    "add",
-						Path:  fmt.Sprintf("/spec/imagePullSecrets/%d", len(pod.Spec.ImagePullSecrets)),
-						Value: []map[string]string{{"name": wh.imagePullSecret}},
-					})
-				}
-			} else {
-				// in the replace branch,
-				// if the secret is not the one to set, we replace the existing secret(s)
-				if !(len(pod.Spec.ImagePullSecrets) == 1 && pod.Spec.ImagePullSecrets[0].Name == wh.imagePullSecret) {
-					patches = append(patches, patchOperation{
-						Op:    "replace",
-						Path:  "/spec/imagePullSecrets",
-						Value: []map[string]string{{"name": wh.imagePullSecret}},
-					})
-				}
-			}
-		}
+		patches = append(patches, wh.patchImagePullSecret(pod)...)
 	}
 
-	log.Debugf("Patch applied: %v", patches)
+	wh.logger.Debugf("Patch applied: %v", patches)
 
 	return patches, nil
-}
-
-// replaceRegistryIfSet assumes the image format is a.b[:port]/c/d:e
-// if a.b is present, it is replaced by the registry given as argument.
-func replaceRegistryIfSet(image string, registry string) string {
-
-	imageParts := strings.Split(image, "/")
-
-	if len(imageParts) == 1 {
-		// case imagename or imagename:version, where version can contains .
-		imageParts = append([]string{registry}, imageParts...)
-	} else {
-		// case something/imagename:version, assessing the something part.
-		if strings.Contains(imageParts[0], ".") {
-			imageParts[0] = registry
-		} else {
-			imageParts = append([]string{registry}, imageParts...)
-		}
-	}
-
-	return strings.Join(imageParts, "/")
 }
 
 // applyMutationOnPvc gets the deserialized pvc spec and returns the patch operations
@@ -210,37 +91,7 @@ func (wh *mutationWH) applyMutationOnPvc(pvc corev1.PersistentVolumeClaim) ([]pa
 		}
 	}
 
-	log.Debugf("Patch applied: %v", patches)
+	wh.logger.Debugf("Patch applied: %v", patches)
 
 	return patches, nil
-}
-
-// containsRegistry returns true if the image "contains",
-// i.e. start with the registry prefix.
-// A tailing / is added during the comparison to ensure
-// the registry is not only a prefix of the image.
-func containsRegistry(image string, registry string) bool {
-	return strings.HasPrefix(image, registry+"/")
-}
-
-func containsAnyRegistry(image string, registries []string) bool {
-	for _, s := range registries {
-		if containsRegistry(image, s) {
-			return true
-		}
-	}
-	return false
-}
-
-func isPullPolicyValid(policy string) (bool, corev1.PullPolicy) {
-	switch policy {
-	case string(corev1.PullAlways):
-		return true, corev1.PullAlways
-	case string(corev1.PullIfNotPresent):
-		return true, corev1.PullIfNotPresent
-	case string(corev1.PullNever):
-		return true, corev1.PullNever
-	default:
-		return false, corev1.PullAlways
-	}
 }

@@ -1,0 +1,6 @@
+# tls:
+#   cert_file: deployment/certs/webhook-server-tls.crt
+#   key_file: deployment/certs/webhook-server-tls.key
+
+registry:
+  vcr.vngcloud.vn: "vcr-han.vngcloud.vn"
