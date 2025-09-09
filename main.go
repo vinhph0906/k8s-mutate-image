@@ -17,8 +17,9 @@ type mutationWH struct {
 	forceImagePullPolicy   bool
 	imagePullPolicyToForce corev1.PullPolicy
 	defaultStorageClass    string
-	excludedNamespaces     map[string]bool
-	logger                 *logrus.Logger
+	// excludedNamespaces     map[string]bool
+	includedNamespaces map[string]bool
+	logger             *logrus.Logger
 }
 
 func main() {
@@ -43,9 +44,13 @@ func main() {
 		"osarch":  OsArch,
 	}).Info("k8s-mutate-image-and-policy-webhook is starting...")
 	// Validate pull policy
-	excludedNamespaces := make(map[string]bool)
-	for _, ns := range cfg.ExcludeNamespaces {
-		excludedNamespaces[ns] = true
+	// excludedNamespaces := make(map[string]bool)
+	// for _, ns := range cfg.ExcludeNamespaces {
+	// 	excludedNamespaces[ns] = true
+	// }
+	includeNamespaces := make(map[string]bool)
+	for _, ns := range cfg.IncludeNamespaces {
+		includeNamespaces[ns] = true
 	}
 	wh := mutationWH{
 		registries:             cfg.Registries,
@@ -54,8 +59,9 @@ func main() {
 		forceImagePullPolicy:   cfg.ForceImagePullPolicy,
 		imagePullPolicyToForce: cfg.ImagePullPolicyToForce,
 		defaultStorageClass:    cfg.DefaultStorageClass,
-		excludedNamespaces:     excludedNamespaces,
-		logger:                 logger,
+		// excludedNamespaces:     excludedNamespaces,
+		includedNamespaces: includeNamespaces,
+		logger:             logger,
 	}
 
 	mux := http.NewServeMux()

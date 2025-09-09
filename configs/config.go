@@ -36,8 +36,8 @@ type Config struct {
 	ForceImagePullPolicy   bool              `yaml:"force_image_pull_policy"`
 	ImagePullPolicyToForce corev1.PullPolicy `yaml:"image_pull_policy_to_force" default:"IfNotPresent" validate:"oneof=Always IfNotPresent Never"`
 	DefaultStorageClass    string            `yaml:"default_storage_class"`
-	ExcludeNamespaces      []string          `yaml:"exclude_namespaces"`
-	IgnoredRegistries      []string          `yaml:"ignored_registries"`
+	// ExcludeNamespaces      []string          `yaml:"exclude_namespaces"`
+	IncludeNamespaces []string `yaml:"include_namespaces"`
 }
 
 func NewConfig(filename string) (*Config, error) {

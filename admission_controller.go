@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/sirupsen/logrus"
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -101,7 +102,8 @@ func (wh *mutationWH) doServeAdmitFunc(w http.ResponseWriter, r *http.Request, a
 
 		// Apply the admit() function only for non-excluded namespaces. For objects excluded, return
 		// an empty set of patch operations.
-		if !wh.excludedNamespaces[admissionReviewReq.Request.Namespace] {
+		// if !wh.excludedNamespaces[admissionReviewReq.Request.Namespace] &&
+		if !wh.includedNamespaces[admissionReviewReq.Request.Namespace] {
 			patchOps, err = admit(admissionReviewReq.Request)
 		} else {
 			wh.logger.Debugf("Namespace is excluded")
@@ -116,6 +118,14 @@ func (wh *mutationWH) doServeAdmitFunc(w http.ResponseWriter, r *http.Request, a
 				Reason:  metav1.StatusReasonBadRequest,
 			}
 		} else {
+			wh.logger.WithFields(logrus.Fields{
+				"namespace": admissionReviewReq.Request.Namespace,
+				"operation": admissionReviewReq.Request.Operation,
+				"uid":       admissionReviewReq.Request.UID,
+				"kind":      admissionReviewReq.Request.Kind,
+				"name":      admissionReviewReq.Request.Name,
+				"patch":     patchOps,
+			}).Info("Admission review request processed successfully")
 			// Otherwise, encode the patch operations to JSON and return a positive response.
 			patchBytes, err := simplejson.Marshal(patchOps)
 			if err != nil {

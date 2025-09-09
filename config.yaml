@@ -4,3 +4,4 @@
 
 registry:
   vcr.vngcloud.vn: "vcr-han.vngcloud.vn"
+  default: aaa
